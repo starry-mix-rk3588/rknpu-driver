@@ -1,5 +1,5 @@
 use rk3588_rs::{
-    DrmVersion, RknpuAction, RknpuMemCreate, RknpuMemDestroy, RknpuMemMap, RknpuSubmit, RknpuTask, DRM_COMMAND_BASE, DRM_IOCTL_BASE, RKNPU_ACTION, RKNPU_MEM_CREATE, RKNPU_MEM_DESTROY, RKNPU_MEM_MAP, RKNPU_SUBMIT
+    DrmVersion,  RknpuMemCreate, RknpuMemDestroy, RknpuMemMap, RknpuSubmit,  DRM_COMMAND_BASE, DRM_IOCTL_BASE, RKNPU_ACTION, RKNPU_MEM_CREATE, RKNPU_MEM_DESTROY, RKNPU_MEM_MAP, RKNPU_SUBMIT
 };
 
 const IOC_READ: u32 = 2;

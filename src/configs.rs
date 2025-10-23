@@ -1,7 +1,4 @@
-use axhal::mem::phys_to_virt;
-
-use super::types::{NpuCore, RkBoard};
-
+use super::types::RkBoard;
 
 pub mod addresses {
     /// NPU 核心寄存器基地址

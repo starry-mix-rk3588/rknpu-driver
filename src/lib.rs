@@ -1,3 +1,5 @@
+#![no_std]
+
 pub mod configs;
 pub mod registers;
 mod rknpu_dev;

@@ -1,5 +1,5 @@
 use tock_registers::{
-    register_bitfields, register_structs,
+    register_structs,
     registers::{ReadOnly, ReadWrite, WriteOnly},
 };
 

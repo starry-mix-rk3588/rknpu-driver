@@ -1,5 +1,6 @@
 use rk3588_rs::{
-    RknpuAction, RknpuMemCreate, RknpuMemDestroy, RknpuMemMap, RknpuMemSync, RknpuSubmit,
+    DrmVersion, RknpuAction, RknpuMemCreate, RknpuMemDestroy, RknpuMemMap, RknpuMemSync,
+    RknpuSubmit,
 };
 
 use crate::{
@@ -44,27 +45,27 @@ pub fn rknpu_ioctl(rknpu: &RknpuDev, cmd: u32, arg: usize) -> RkNpuResult<()> {
             Ok(())
         }
         Some(RkNpuIoctl::RknpuAction) => {
-            let action = unsafe { &mut *(arg as *const RknpuAction) };
+            let action = unsafe { &mut *(arg as *mut RknpuAction) };
             rknpu.rknpu_action_ioctl(action)
         }
         Some(RkNpuIoctl::RknpuSubmit) => {
-            let submit = unsafe { &mut *(arg as *const RknpuSubmit) };
+            let submit = unsafe { &mut *(arg as *mut RknpuSubmit) };
             rknpu.rknpu_submit_ioctl(submit)
         }
         Some(RkNpuIoctl::RknpuMemCreate) => {
-            let mem_create = unsafe { &mut *(arg as *const RknpuMemCreate) };
+            let mem_create = unsafe { &mut *(arg as *mut RknpuMemCreate) };
             rknpu.rknpu_mem_create_ioctl(mem_create)
         }
         Some(RkNpuIoctl::RknpuMemMap) => {
-            let mem_map = unsafe { &mut *(arg as *const RknpuMemMap) };
+            let mem_map = unsafe { &mut *(arg as *mut RknpuMemMap) };
             rknpu.rknpu_mem_map_ioctl(mem_map)
         }
         Some(RkNpuIoctl::RknpuMemDestroy) => {
-            let mem_destroy = unsafe { &mut *(arg as *const RknpuMemDestroy) };
+            let mem_destroy = unsafe { &mut *(arg as *mut RknpuMemDestroy) };
             rknpu.rknpu_mem_destroy_ioctl(mem_destroy)
         }
         Some(RkNpuIoctl::RknpuMemSync) => {
-            let mem_sync = unsafe { &mut *(arg as *const RknpuMemSync) };
+            let mem_sync = unsafe { &mut *(arg as *mut RknpuMemSync) };
             rknpu.rknpu_mem_sync_ioctl(mem_sync)
         }
         _ => Err(RkNpuError::InvalidInput),
