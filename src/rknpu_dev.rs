@@ -7,8 +7,9 @@ use tock_registers::{interfaces::Readable, registers::ReadOnly};
 use crate::{
     configs::{RK3588_NPU_VERSION, RknpuConfig, addresses},
     registers::RknpuRegisters,
-    types::{NpuCore, RkBoard, RkNpuError, RkNpuResult},
+    types::{NpuCore, RkBoard, RkNpuError, RkNpuResult, RknpuActionFlag},
 };
+use log::info;
 
 #[derive(Debug)]
 pub struct RknpuDev {
@@ -33,7 +34,7 @@ impl RknpuDev {
         }
     }
 
-    pub fn initialize(&self) -> Result<(), RkNpuResult> {
+    pub fn initialize(&self) -> RkNpuResult<()> {
         let pmu_base = unsafe {
             NonNull::new(phys_to_virt(addresses::PMU1_BASE.into()).as_mut_ptr()).unwrap()
         };
@@ -50,44 +51,47 @@ impl RknpuDev {
         Ok(())
     }
 
-    pub fn rknpu_action_ioctl(
-        &self,
-        action: &RknpuAction,
-        core: NpuCore,
-    ) -> Result<(), RkNpuResult> {
-        // Handle RKNPU_ACTION ioctl
+    pub fn rknpu_action_ioctl(&self, action: &mut RknpuAction) -> RkNpuResult<()> {
+        match RknpuActionFlag::from(action.flags) {
+            RknpuActionFlag::GetHwVersion => {
+                action.value = self.core_base.version.get();
+            }
+            _ => {
+                return Err(RkNpuError::InvalidInput);
+            }
+        }
         Ok(())
     }
 
-    pub fn rknpu_submit_ioctl(&self, submit: &RknpuSubmit) -> Result<(), RkNpuResult> {
-        // Handle RKNPU_SUBMIT ioctl
+    pub fn rknpu_submit_ioctl(&self, submit: &RknpuSubmit) -> RkNpuResult<()> {
+        info!(
+            "[RKNPU] SUBMIT: task_obj_addr=0x{:x}, task_number={}, flags=0x{:x}, timeout={}",
+            submit.task_obj_addr, submit.task_number, submit.flags, submit.timeout
+        );
         Ok(())
     }
 
-    pub fn rknpu_mem_create_ioctl(&self, mem_create: &RknpuMemCreate) -> Result<(), RkNpuResult> {
+    pub fn rknpu_mem_create_ioctl(&self, mem_create: &RknpuMemCreate) -> RkNpuResult<()> {
         // Handle RKNPU_MEM_CREATE ioctl
         Ok(())
     }
 
-    pub fn rknpu_mem_map_ioctl(&self, mem_map: &RknpuMemMap) -> Result<(), RkNpuResult> {
+    pub fn rknpu_mem_map_ioctl(&self, mem_map: &RknpuMemMap) -> RkNpuResult<()> {
         // Handle RKNPU_MEM_MAP ioctl
         Ok(())
     }
 
-    pub fn rknpu_mem_destroy_ioctl(
-        &self,
-        mem_destroy: &RknpuMemDestroy,
-    ) -> Result<(), RkNpuResult> {
+    pub fn rknpu_mem_destroy_ioctl(&self, mem_destroy: &RknpuMemDestroy) -> RkNpuResult<()> {
         // Handle RKNPU_MEM_DESTROY ioctl
         Ok(())
     }
 
-    pub fn rknpu_mem_sync_ioctl(&self, mem_sync: &RknpuMemSync) -> Result<(), RkNpuResult> {
+    pub fn rknpu_mem_sync_ioctl(&self, mem_sync: &RknpuMemSync) -> RkNpuResult<()> {
         // Handle RKNPU_MEM_SYNC ioctl
         Ok(())
     }
 
-    fn check_hardware_version(&self) -> Result<(), RkNpuResult> {
+    fn check_hardware_version(&self) -> RkNpuResult<()> {
         let version = self.core_base.version.get();
         if version == RK3588_NPU_VERSION {
             Ok(())
