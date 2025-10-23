@@ -1,0 +1,14 @@
+[package]
+name = "rknpu-driver"
+version = "0.1.0"
+edition = "2024"
+authors = ["Debin <luodeb@outlook.com>"]
+description = "Driver for Rockchip NPU devices"
+license = "GPL-3.0-or-later OR Apache-2.0"
+
+[dependencies]
+rk3588-rs = { path = "../rknpu2-rslab/rk3588-rs", default-features = false, features = [
+    "no_std",
+] }
+rockchip-pm = { git = "https://github.com/drivercraft/rockchip-pm.git" }
+tock-registers = "0.10"
