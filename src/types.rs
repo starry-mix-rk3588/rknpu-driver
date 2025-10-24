@@ -171,6 +171,14 @@ pub enum RkNpuError {
     UnsupportedVersion,
     InvalidInput,
     HardwareError,
+    MemoryFault,
+    TaskSubmitFailed,
+    TaskTimeout,
+    NoInterrupt,
+    NotSupported,
+    InvalidTaskAddress,
+    InvalidParameter,
+    OutOfMemory,
 }
 
 pub type RkNpuResult<T> = Result<T, RkNpuError>;

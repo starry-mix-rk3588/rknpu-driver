@@ -13,3 +13,4 @@ rk3588-rs = { path = "../rknpu2-rslab/rk3588-rs", default-features = false, feat
 rockchip-pm = { git = "https://github.com/drivercraft/rockchip-pm.git" }
 tock-registers = "0.10"
 log = "0.4"
+memory_addr = "0.4.0"

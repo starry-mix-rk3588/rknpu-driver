@@ -1,5 +1,5 @@
 use rk3588_rs::{
-    DrmVersion, RknpuAction, RknpuMemCreate, RknpuMemDestroy, RknpuMemMap, RknpuMemSync,
+    DrmVersion, RknpuAction, RknpuMemSync,
     RknpuSubmit,
 };
 
@@ -51,18 +51,6 @@ pub fn rknpu_ioctl(rknpu: &RknpuDev, cmd: u32, arg: usize) -> RkNpuResult<()> {
         Some(RkNpuIoctl::RknpuSubmit) => {
             let submit = unsafe { &mut *(arg as *mut RknpuSubmit) };
             rknpu.rknpu_submit_ioctl(submit)
-        }
-        Some(RkNpuIoctl::RknpuMemCreate) => {
-            let mem_create = unsafe { &mut *(arg as *mut RknpuMemCreate) };
-            rknpu.rknpu_mem_create_ioctl(mem_create)
-        }
-        Some(RkNpuIoctl::RknpuMemMap) => {
-            let mem_map = unsafe { &mut *(arg as *mut RknpuMemMap) };
-            rknpu.rknpu_mem_map_ioctl(mem_map)
-        }
-        Some(RkNpuIoctl::RknpuMemDestroy) => {
-            let mem_destroy = unsafe { &mut *(arg as *mut RknpuMemDestroy) };
-            rknpu.rknpu_mem_destroy_ioctl(mem_destroy)
         }
         Some(RkNpuIoctl::RknpuMemSync) => {
             let mem_sync = unsafe { &mut *(arg as *mut RknpuMemSync) };
