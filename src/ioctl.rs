@@ -1,4 +1,5 @@
 use log::info;
+use memory_addr::{PhysAddr, VirtAddr};
 use rk3588_rs::{
     DrmVersion, RknpuAction, RknpuMemSync,
     RknpuSubmit,
@@ -9,7 +10,7 @@ use crate::{
     types::{RkNpuError, RkNpuIoctl, RkNpuResult},
 };
 
-pub fn rknpu_ioctl(rknpu: &RknpuDev, rknpu_cmd: Option<RkNpuIoctl>, arg: usize) -> RkNpuResult<()> {
+pub fn rknpu_ioctl(rknpu: &RknpuDev, rknpu_cmd: Option<RkNpuIoctl>, arg: usize, dma_to_kernel: fn(PhysAddr) -> VirtAddr) -> RkNpuResult<()> {
     info!("rknpu ioctl => cmd: {:?}, arg: {:#x}", rknpu_cmd, arg);
     match rknpu_cmd {
         Some(RkNpuIoctl::DrmIoctlVersion) => {
@@ -52,7 +53,7 @@ pub fn rknpu_ioctl(rknpu: &RknpuDev, rknpu_cmd: Option<RkNpuIoctl>, arg: usize) 
         }
         Some(RkNpuIoctl::RknpuSubmit) => {
             let submit = unsafe { &mut *(arg as *mut RknpuSubmit) };
-            rknpu.rknpu_submit_ioctl(submit)
+            rknpu.rknpu_submit_ioctl(submit, dma_to_kernel)
         }
         Some(RkNpuIoctl::RknpuMemSync) => {
             let mem_sync = unsafe { &mut *(arg as *mut RknpuMemSync) };

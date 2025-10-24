@@ -1,15 +1,16 @@
-use core::ptr::{addr_of, NonNull};
+use core::ptr::{NonNull, addr_of};
 
 use log::info;
+use memory_addr::{PhysAddr, VirtAddr, pa};
 use rk3588_rs::{
-    RknpuAction, RknpuMemSync, RknpuSubmit,
-    RknpuTask, RKNPU_JOB_PINGPONG, RKNPU_PC_DATA_EXTRA_AMOUNT,
+    RKNPU_JOB_PINGPONG, RKNPU_PC_DATA_EXTRA_AMOUNT, RknpuAction, RknpuMemSync, RknpuSubmit,
+    RknpuTask,
 };
 use rockchip_pm::{PD, RockchipPM};
 use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{
-    configs::{RknpuConfig, RK3588_NPU_VERSION},
+    configs::{RK3588_NPU_VERSION, RknpuConfig},
     registers::RknpuRegisters,
     types::{NpuCore, RkBoard, RkNpuError, RkNpuResult, RknpuActionFlag},
 };
@@ -67,7 +68,11 @@ impl RknpuDev {
         Ok(())
     }
 
-    pub fn rknpu_submit_ioctl(&self, submit: &RknpuSubmit) -> RkNpuResult<()> {
+    pub fn rknpu_submit_ioctl(
+        &self,
+        submit: &mut RknpuSubmit,
+        dma_to_kernel: fn(PhysAddr) -> VirtAddr,
+    ) -> RkNpuResult<()> {
         info!(
             "[RKNPU] SUBMIT: task_obj_addr=0x{:x}, task_number={}, flags=0x{:x}, timeout={}, \
              core_mask=0x{:x}",
@@ -89,7 +94,8 @@ impl RknpuDev {
             return Err(RkNpuError::InvalidTaskAddress);
         }
 
-        let task_base = submit.task_obj_addr as *const RknpuTask;
+        let task_base =
+            dma_to_kernel(pa!(submit.task_obj_addr as usize)).as_mut_ptr() as *const RknpuTask;
 
         info!(
             "[RKNPU] Checking interrupt status before submission: 0x{:x}",
@@ -101,7 +107,7 @@ impl RknpuDev {
         );
 
         // 提交任务到硬件
-        self.job_commit_pc(task_base, submit.task_start, submit.task_number, submit.flags)?;
+        self.job_commit_pc(task_base, submit)?;
 
         // 等待任务完成
         let timeout = if submit.timeout > 0 {
@@ -134,17 +140,28 @@ impl RknpuDev {
     fn job_commit_pc(
         &self,
         task_base: *const RknpuTask,
-        task_start: u32,
-        task_number: u32,
-        flags: u32,
+        submit: &mut RknpuSubmit,
     ) -> RkNpuResult<()> {
         if task_base.is_null() {
             return Err(RkNpuError::InvalidTaskAddress);
         }
 
+        info!(
+            "[RKNPU] Committing PC job: task_base={:x}, task_start={}, task_number={}, flags=0x{:x}",
+            task_base as usize, submit.task_start, submit.task_number, submit.flags
+        );
+
         unsafe {
-            let task_end = task_start + task_number - 1;
-            let first_task = task_base.add(task_start as usize);
+            let task_end = submit.task_start + submit.task_number - 1;
+            let first_task = task_base.add(submit.task_start as usize);
+
+            info!(
+                "[RKNPU] First task addr 0x{:x}, int_mask {}, regcmd_addr 0x{:x}",
+                first_task as usize,
+                core::ptr::read_unaligned(addr_of!((*first_task).int_mask)),
+                core::ptr::read_unaligned(addr_of!((*first_task).regcmd_addr))
+            );
+
             let last_task = task_base.add(task_end as usize);
 
             // 读取第一个任务的配置（使用 read_unaligned 因为是 packed struct）
@@ -157,7 +174,7 @@ impl RknpuDev {
             let last_int_mask = core::ptr::read_unaligned(addr_of!((*last_task).int_mask));
 
             let pc_data_amount_scale = self.config.pc_data_amount_scale;
-            let task_pp_en = if flags & RKNPU_JOB_PINGPONG != 0 {
+            let task_pp_en = if submit.flags & RKNPU_JOB_PINGPONG != 0 {
                 1
             } else {
                 0
@@ -166,7 +183,7 @@ impl RknpuDev {
 
             info!(
                 "[RKNPU] Committing PC job: task_start={}, task_number={}",
-                task_start, task_number
+                submit.task_start, submit.task_number
             );
             info!(
                 "[RKNPU] First task regcmd_addr=0x{:x}, regcfg_amount={}",
@@ -177,16 +194,13 @@ impl RknpuDev {
             self.core_regs().pc_data_addr.set(0x1);
 
             // 2. 写 regcmd 地址（只使用低32位）
-            self.core_regs()
-                .pc_data_addr
-                .set(first_regcmd_addr as u32);
+            self.core_regs().pc_data_addr.set(first_regcmd_addr as u32);
 
             // 3. 计算并写数据量
-            let data_amount = (first_regcfg_amount + RKNPU_PC_DATA_EXTRA_AMOUNT
-                + pc_data_amount_scale
-                - 1)
-                / pc_data_amount_scale
-                - 1;
+            let data_amount =
+                (first_regcfg_amount + RKNPU_PC_DATA_EXTRA_AMOUNT + pc_data_amount_scale - 1)
+                    / pc_data_amount_scale
+                    - 1;
             info!("[RKNPU] Data amount: {}", data_amount);
             self.core_regs().pc_data_amount.set(data_amount);
 
@@ -197,7 +211,7 @@ impl RknpuDev {
             self.core_regs().int_clear.set(first_int_clear);
 
             // 6. 写任务控制
-            let pc_task_control = ((0x6 | task_pp_en) << pc_task_number_bits) | task_number;
+            let pc_task_control = ((0x6 | task_pp_en) << pc_task_number_bits) | submit.task_number;
             info!("[RKNPU] PC task control: 0x{:x}", pc_task_control);
             self.core_regs().pc_task_control.set(pc_task_control);
 
@@ -213,7 +227,10 @@ impl RknpuDev {
 
     /// 等待任务完成
     fn wait_job_done(&self, timeout_ms: u32) -> RkNpuResult<()> {
-        info!("[RKNPU] Waiting for job completion (timeout: {}ms)", timeout_ms);
+        info!(
+            "[RKNPU] Waiting for job completion (timeout: {}ms)",
+            timeout_ms
+        );
 
         // 简单的轮询实现，每次检查间隔约10微秒
         let max_iterations = (timeout_ms as usize) * 100; // 10us * 100 = 1ms
