@@ -1,3 +1,5 @@
+use core::fmt::Display;
+
 use rk3588_rs::{
     DrmVersion,  RknpuMemCreate, RknpuMemDestroy, RknpuMemMap, RknpuSubmit,  DRM_COMMAND_BASE, DRM_IOCTL_BASE, RKNPU_ACTION, RKNPU_MEM_CREATE, RKNPU_MEM_DESTROY, RKNPU_MEM_MAP, RKNPU_SUBMIT
 };
@@ -104,6 +106,22 @@ impl RkNpuIoctl {
         }
     }
 }
+
+impl Display for RkNpuIoctl {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let name = match self {
+            Self::DrmIoctlVersion => "DRM_IOCTL_VERSION",
+            Self::RknpuAction => "DRM_IOCTL_RKNPU_ACTION",
+            Self::RknpuMemCreate => "DRM_IOCTL_RKNPU_MEM_CREATE",
+            Self::RknpuMemSync => "DRM_IOCTL_RKNPU_MEM_SYNC",
+            Self::RknpuMemDestroy => "DRM_IOCTL_RKNPU_MEM_DESTROY",
+            Self::RknpuMemMap => "DRM_IOCTL_RKNPU_MEM_MAP",
+            Self::RknpuSubmit => "DRM_IOCTL_RKNPU_SUBMIT",
+        };
+        write!(f, "{}", name)
+    }
+}
+
 
 pub enum RknpuActionFlag {
     GetHwVersion = 0,

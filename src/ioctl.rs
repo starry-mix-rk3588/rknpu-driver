@@ -1,3 +1,4 @@
+use log::info;
 use rk3588_rs::{
     DrmVersion, RknpuAction, RknpuMemSync,
     RknpuSubmit,
@@ -8,8 +9,9 @@ use crate::{
     types::{RkNpuError, RkNpuIoctl, RkNpuResult},
 };
 
-pub fn rknpu_ioctl(rknpu: &RknpuDev, cmd: u32, arg: usize) -> RkNpuResult<()> {
-    match RkNpuIoctl::from_cmd(cmd) {
+pub fn rknpu_ioctl(rknpu: &RknpuDev, rknpu_cmd: Option<RkNpuIoctl>, arg: usize) -> RkNpuResult<()> {
+    info!("rknpu ioctl => cmd: {:?}, arg: {:#x}", rknpu_cmd, arg);
+    match rknpu_cmd {
         Some(RkNpuIoctl::DrmIoctlVersion) => {
             let drm_ver = unsafe { &mut *(arg as *mut DrmVersion) };
             drm_ver.version_major = 1;

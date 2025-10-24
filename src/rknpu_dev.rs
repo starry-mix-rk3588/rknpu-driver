@@ -56,7 +56,11 @@ impl RknpuDev {
             RknpuActionFlag::GetHwVersion => {
                 action.value = self.core_regs().version.get();
             }
+            RknpuActionFlag::ActReset => {
+                info!("[RKNPU] Hardware reset todo");
+            }
             _ => {
+                info!("[RKNPU] Unsupported action flag: 0x{:x}", action.flags);
                 return Err(RkNpuError::InvalidInput);
             }
         }
