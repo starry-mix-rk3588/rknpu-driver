@@ -154,7 +154,7 @@ impl RknpuDev {
         unsafe {
             let task_end = submit.task_start + submit.task_number - 1;
             let first_task = task_base.add(submit.task_start as usize);
-
+            let last_task = task_base.add(task_end as usize);
             info!(
                 "[RKNPU] First task addr 0x{:x}, int_mask {}, regcmd_addr 0x{:x}",
                 first_task as usize,
@@ -162,7 +162,9 @@ impl RknpuDev {
                 core::ptr::read_unaligned(addr_of!((*first_task).regcmd_addr))
             );
 
-            let last_task = task_base.add(task_end as usize);
+            let tasks = &mut *(first_task as *mut RknpuTask);
+            info!("{:#?}", tasks);
+
 
             // 读取第一个任务的配置（使用 read_unaligned 因为是 packed struct）
             let first_regcmd_addr = core::ptr::read_unaligned(addr_of!((*first_task).regcmd_addr));
