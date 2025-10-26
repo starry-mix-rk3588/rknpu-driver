@@ -20,6 +20,47 @@ pub struct RknpuDev {
     core_base: usize,
 }
 
+#[inline(always)]
+pub unsafe fn dcache_flush_range(start: usize, size: usize) {
+    let mut addr = start & !0x3F; // cache line 对齐
+    let end = start + size;
+
+    while addr < end {
+        unsafe {
+            core::arch::asm!(
+                "dc cvac, {0}",
+                in(reg) addr,
+                options(nostack, preserves_flags)
+            );
+        }
+
+        addr += 64; // 每次 64 bytes (cache line)
+    }
+    unsafe {
+        core::arch::asm!("dsb ish", "isb", options(nostack, preserves_flags));
+    }
+}
+
+#[inline(always)]
+pub unsafe fn dcache_invalidate_range(start: usize, size: usize) {
+    let mut addr = start & !0x3F;
+    let end = start + size;
+
+    while addr < end {
+        unsafe {
+            core::arch::asm!(
+                "dc ivac, {0}",
+                in(reg) addr,
+                options(nostack, preserves_flags)
+            );
+        }
+        addr += 64;
+    }
+    unsafe {
+        core::arch::asm!("dsb ish", "isb", options(nostack, preserves_flags));
+    }
+}
+
 /// NPU 主电源域
 pub const NPU: PD = PD(8);
 /// NPU TOP 电源域  
@@ -116,7 +157,8 @@ impl RknpuDev {
             5000 // 默认5秒超时
         };
 
-        self.wait_job_done(timeout)?;
+        // todo: get mem pool base addr
+        self.wait_job_done(timeout, task_base as usize - 0x1000usize)?;
 
         info!("[RKNPU] Task submission completed successfully");
         Ok(())
@@ -147,7 +189,8 @@ impl RknpuDev {
         }
 
         info!(
-            "[RKNPU] Committing PC job: task_base={:x}, task_start={}, task_number={}, flags=0x{:x}",
+            "[RKNPU] Committing PC job: task_base={:x}, task_start={}, task_number={}, \
+             flags=0x{:x}",
             task_base as usize, submit.task_start, submit.task_number, submit.flags
         );
 
@@ -155,6 +198,14 @@ impl RknpuDev {
             let task_end = submit.task_start + submit.task_number - 1;
             let first_task = task_base.add(submit.task_start as usize);
             let last_task = task_base.add(task_end as usize);
+
+            // todo: get task mem size
+            dcache_flush_range(task_base as usize, 1024);
+            let reg_addr_kva = core::ptr::read_unaligned(addr_of!((*first_task).regcmd_addr))
+                + 0xffff_0000_0000_0000;
+
+            dcache_flush_range(reg_addr_kva as usize, 8 * 1024 * 1024);
+
             info!(
                 "[RKNPU] First task addr 0x{:x}, int_mask {}, regcmd_addr 0x{:x}",
                 first_task as usize,
@@ -164,7 +215,6 @@ impl RknpuDev {
 
             let tasks = &mut *(first_task as *mut RknpuTask);
             info!("{:#?}", tasks);
-
 
             // 读取第一个任务的配置（使用 read_unaligned 因为是 packed struct）
             let first_regcmd_addr = core::ptr::read_unaligned(addr_of!((*first_task).regcmd_addr));
@@ -228,7 +278,7 @@ impl RknpuDev {
     }
 
     /// 等待任务完成
-    fn wait_job_done(&self, timeout_ms: u32) -> RkNpuResult<()> {
+    fn wait_job_done(&self, timeout_ms: u32, pool_start: usize) -> RkNpuResult<()> {
         info!(
             "[RKNPU] Waiting for job completion (timeout: {}ms)",
             timeout_ms
@@ -241,11 +291,16 @@ impl RknpuDev {
             let int_status = self.core_regs().int_status.get();
 
             // 检查中断状态（任何非零值表示有中断）
-            if int_status != 0 {
+            if int_status == 0x100 {
                 info!(
                     "[RKNPU] Job completed after {} iterations, int_status=0x{:x}",
                     i, int_status
                 );
+
+                info!("dcache {:#x}", pool_start);
+                unsafe {
+                    dcache_invalidate_range(pool_start, 8 * 1024 * 1024);
+                }
 
                 // 清除中断
                 self.core_regs().int_clear.set(int_status);
