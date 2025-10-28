@@ -24,6 +24,33 @@ pub mod addresses {
     pub const GPIO3_BASE: usize = 0xFEC40000;
 }
 
+/// CRU 软复位控制寄存器偏移和位定义
+pub mod cru_softrst {
+    /// NPU 软复位控制寄存器偏移
+    pub const SOFTRST_CON_NPU: u32 = 0x0A00;
+
+    /// NPU0 AXI 复位位
+    pub const NPU0_AXI_SRST: u32 = 0;
+    /// NPU0 AHB 复位位
+    pub const NPU0_AHB_SRST: u32 = 1;
+
+    /// NPU1 AXI 复位位
+    pub const NPU1_AXI_SRST: u32 = 2;
+    /// NPU1 AHB 复位位
+    pub const NPU1_AHB_SRST: u32 = 3;
+
+    /// NPU2 AXI 复位位
+    pub const NPU2_AXI_SRST: u32 = 4;
+    /// NPU2 AHB 复位位
+    pub const NPU2_AHB_SRST: u32 = 5;
+
+    /// 写使能掩码位移（RK 芯片特有的写保护机制）
+    pub const WRITE_MASK_SHIFT: u32 = 16;
+}
+
+/// 中断清除值
+pub const INT_CLEAR_VALUE: u32 = 0x1ffff;
+
 pub const RK3588_NPU_VERSION: u32 = 0x46495245;
 
 /// RKNPU 硬件配置

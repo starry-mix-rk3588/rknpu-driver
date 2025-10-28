@@ -4,6 +4,30 @@ use tock_registers::{
 };
 
 register_structs! {
+    pub RknpuCruRegisters {
+        (0x0000 => _reserved0),
+        
+        /// NPU 软复位控制寄存器 (偏移 0x0A00)
+        /// 
+        /// RK 芯片的写保护机制：
+        /// - 高 16 位为写使能掩码 (write mask)
+        /// - 低 16 位为实际的复位控制位
+        /// - 写入时需要同时设置对应的掩码位
+        /// 
+        /// 复位位定义：
+        /// - Bit 0: NPU0 AXI 复位
+        /// - Bit 1: NPU0 AHB 复位
+        /// - Bit 2: NPU1 AXI 复位
+        /// - Bit 3: NPU1 AHB 复位
+        /// - Bit 4: NPU2 AXI 复位
+        /// - Bit 5: NPU2 AHB 复位
+        (0x0A00 => pub softrst_con_npu: ReadWrite<u32>),
+        
+        (0x0A04 => @END),
+    }
+}
+
+register_structs! {
     pub RknpuRegisters {
         /// Version register
         (0x0000 => pub version: ReadOnly<u32>),

@@ -1,6 +1,6 @@
 use core::ptr::{NonNull, addr_of};
 
-use log::info;
+use log::{debug, error, info};
 use memory_addr::{PhysAddr, VirtAddr, pa};
 use rk3588_rs::{
     RKNPU_JOB_PINGPONG, RKNPU_PC_DATA_EXTRA_AMOUNT, RknpuAction, RknpuMemSync, RknpuSubmit,
@@ -11,13 +11,15 @@ use tock_registers::interfaces::{Readable, Writeable};
 
 use crate::{
     configs::{RK3588_NPU_VERSION, RknpuConfig},
-    registers::RknpuRegisters,
+    registers::{RknpuCruRegisters, RknpuRegisters},
     types::{NpuCore, RkBoard, RkNpuError, RkNpuResult, RknpuActionFlag},
 };
 
 pub struct RknpuDev {
     config: RknpuConfig,
     core_base: usize,
+    cru_base: usize,
+    pm_base: usize
 }
 
 #[inline(always)]
@@ -71,10 +73,12 @@ pub const NPU1: PD = PD(10);
 pub const NPU2: PD = PD(11);
 
 impl RknpuDev {
-    pub fn new(base: usize, board: RkBoard) -> Self {
+    pub fn new(base: usize, cru_base: usize, pm_base: usize, board: RkBoard) -> Self {
         RknpuDev {
             config: RknpuConfig::from_board(board),
             core_base: base,
+            cru_base,
+            pm_base,
         }
     }
 
@@ -82,10 +86,17 @@ impl RknpuDev {
         unsafe { &*(self.core_base as *const _) }
     }
 
-    pub fn initialize(&mut self, pmu_base: NonNull<u8>) -> RkNpuResult<()> {
-        let mut pm = RockchipPM::new(pmu_base, rockchip_pm::RkBoard::Rk3588);
+    const fn cru_regs(&self) -> &RknpuCruRegisters {
+        unsafe { &*(self.cru_base as *const _) }
+    }
+
+    pub fn initialize(&mut self) -> RkNpuResult<()> {
+        // Convert pm_base (usize) to NonNull<u8> expected by RockchipPM::new
+        let base_ptr = NonNull::new(self.pm_base as *mut u8)
+            .ok_or(RkNpuError::InvalidInput)?;
+        let mut pm = RockchipPM::new(base_ptr, rockchip_pm::RkBoard::Rk3588);
         pm.power_domain_on(NPU1).unwrap();
-        pm.power_domain_off(NPU2).unwrap();
+        pm.power_domain_on(NPU2).unwrap();
         pm.power_domain_on(NPU).unwrap();
         pm.power_domain_on(NPUTOP).unwrap();
 
@@ -99,10 +110,11 @@ impl RknpuDev {
                 action.value = self.core_regs().version.get();
             }
             RknpuActionFlag::ActReset => {
-                info!("[RKNPU] Hardware reset todo");
+                debug!("[RKNPU] Performing hardware reset");
+                // self.soft_reset()?;
             }
             _ => {
-                info!("[RKNPU] Unsupported action flag: 0x{:x}", action.flags);
+                error!("[RKNPU] Unsupported action flag: 0x{:x}", action.flags);
                 return Err(RkNpuError::InvalidInput);
             }
         }
@@ -114,7 +126,7 @@ impl RknpuDev {
         submit: &mut RknpuSubmit,
         dma_to_kernel: fn(PhysAddr) -> VirtAddr,
     ) -> RkNpuResult<()> {
-        info!(
+        debug!(
             "[RKNPU] SUBMIT: task_obj_addr=0x{:x}, task_number={}, flags=0x{:x}, timeout={}, \
              core_mask=0x{:x}",
             submit.task_obj_addr,
@@ -138,11 +150,11 @@ impl RknpuDev {
         let task_base =
             dma_to_kernel(pa!(submit.task_obj_addr as usize)).as_mut_ptr() as *const RknpuTask;
 
-        info!(
+        debug!(
             "[RKNPU] Checking interrupt status before submission: 0x{:x}",
             self.core_regs().int_status.get()
         );
-        info!(
+        debug!(
             "[RKNPU] Checking raw interrupt status: 0x{:x}",
             self.core_regs().int_raw_status.get()
         );
@@ -160,7 +172,7 @@ impl RknpuDev {
         // todo: get mem pool base addr
         self.wait_job_done(timeout, task_base as usize - 0x1000usize)?;
 
-        info!("[RKNPU] Task submission completed successfully");
+        debug!("[RKNPU] Task submission completed successfully");
         Ok(())
     }
 
@@ -188,7 +200,7 @@ impl RknpuDev {
             return Err(RkNpuError::InvalidTaskAddress);
         }
 
-        info!(
+        debug!(
             "[RKNPU] Committing PC job: task_base={:x}, task_start={}, task_number={}, \
              flags=0x{:x}",
             task_base as usize, submit.task_start, submit.task_number, submit.flags
@@ -206,7 +218,7 @@ impl RknpuDev {
 
             dcache_flush_range(reg_addr_kva as usize, 8 * 1024 * 1024);
 
-            info!(
+            debug!(
                 "[RKNPU] First task addr 0x{:x}, int_mask {}, regcmd_addr 0x{:x}",
                 first_task as usize,
                 core::ptr::read_unaligned(addr_of!((*first_task).int_mask)),
@@ -214,7 +226,7 @@ impl RknpuDev {
             );
 
             let tasks = &mut *(first_task as *mut RknpuTask);
-            info!("{:#?}", tasks);
+            debug!("{:#?}", tasks);
 
             // 读取第一个任务的配置（使用 read_unaligned 因为是 packed struct）
             let first_regcmd_addr = core::ptr::read_unaligned(addr_of!((*first_task).regcmd_addr));
@@ -233,11 +245,11 @@ impl RknpuDev {
             };
             let pc_task_number_bits = self.config.pc_task_number_bits;
 
-            info!(
+            debug!(
                 "[RKNPU] Committing PC job: task_start={}, task_number={}",
                 submit.task_start, submit.task_number
             );
-            info!(
+            debug!(
                 "[RKNPU] First task regcmd_addr=0x{:x}, regcfg_amount={}",
                 first_regcmd_addr, first_regcfg_amount
             );
@@ -253,7 +265,7 @@ impl RknpuDev {
                 (first_regcfg_amount + RKNPU_PC_DATA_EXTRA_AMOUNT + pc_data_amount_scale - 1)
                     / pc_data_amount_scale
                     - 1;
-            info!("[RKNPU] Data amount: {}", data_amount);
+            debug!("[RKNPU] Data amount: {}", data_amount);
             self.core_regs().pc_data_amount.set(data_amount);
 
             // 4. 写中断掩码
@@ -264,14 +276,14 @@ impl RknpuDev {
 
             // 6. 写任务控制
             let pc_task_control = ((0x6 | task_pp_en) << pc_task_number_bits) | submit.task_number;
-            info!("[RKNPU] PC task control: 0x{:x}", pc_task_control);
+            debug!("[RKNPU] PC task control: 0x{:x}", pc_task_control);
             self.core_regs().pc_task_control.set(pc_task_control);
 
             // 7. 提交任务
             self.core_regs().pc_op_en.set(0x1);
             self.core_regs().pc_op_en.set(0x0);
 
-            info!("[RKNPU] Task submitted to hardware");
+            debug!("[RKNPU] Task submitted to hardware");
         }
 
         Ok(())
@@ -279,7 +291,7 @@ impl RknpuDev {
 
     /// 等待任务完成
     fn wait_job_done(&self, timeout_ms: u32, pool_start: usize) -> RkNpuResult<()> {
-        info!(
+        debug!(
             "[RKNPU] Waiting for job completion (timeout: {}ms)",
             timeout_ms
         );
@@ -291,13 +303,13 @@ impl RknpuDev {
             let int_status = self.core_regs().int_status.get();
 
             // 检查中断状态（任何非零值表示有中断）
-            if int_status == 0x100 {
-                info!(
+            if int_status == 0x100 || int_status == 0x200 {
+                debug!(
                     "[RKNPU] Job completed after {} iterations, int_status=0x{:x}",
                     i, int_status
                 );
 
-                info!("dcache {:#x}", pool_start);
+                debug!("dcache {:#x}", pool_start);
                 unsafe {
                     dcache_invalidate_range(pool_start, 8 * 1024 * 1024);
                 }
@@ -314,7 +326,7 @@ impl RknpuDev {
             }
         }
 
-        info!("[RKNPU] Job timeout after {}ms", timeout_ms);
+        info!("[RKNPU] Job timeout after {}ms, status=0x{:x}", timeout_ms, self.core_regs().int_status.get());
         Err(RkNpuError::TaskTimeout)
     }
 
@@ -327,5 +339,138 @@ impl RknpuDev {
         } else {
             Err(RkNpuError::NoInterrupt)
         }
+    }
+
+    /// 微秒级延迟
+    fn delay_us(&self, us: u32) {
+        // 简单的忙等待实现
+        for _ in 0..(us * 100) {
+            core::hint::spin_loop();
+        }
+    }
+
+    /// 清除中断状态
+    fn clear_interrupts(&self) -> RkNpuResult<()> {
+        use crate::configs::INT_CLEAR_VALUE;
+        self.core_regs().int_clear.set(INT_CLEAR_VALUE);
+        info!("[RKNPU] Interrupts cleared");
+        Ok(())
+    }
+
+    /// 禁用所有使能位
+    fn disable_enables(&self) -> RkNpuResult<()> {
+        // 禁用 PC 操作
+        self.core_regs().pc_op_en.set(0);
+        // 清除使能掩码
+        self.core_regs().enable_mask.set(0);
+        info!("[RKNPU] All enables disabled");
+        Ok(())
+    }
+
+    /// 执行 AXI 总线复位
+    ///
+    /// AXI 复位会重置 NPU 的 AXI 总线接口
+    fn reset_axi(&self) -> RkNpuResult<()> {
+        use crate::configs::cru_softrst::*;
+
+        info!("[RKNPU] Performing AXI reset");
+
+        // 只复位 NPU0 核心（当前只使用单核）
+        let reset_bit = NPU0_AXI_SRST;
+
+        // RK 芯片的写保护机制：高 16 位为写使能掩码
+        // 步骤 1: 置位 - 触发复位
+        let set_value = (1 << (reset_bit + WRITE_MASK_SHIFT)) | (1 << reset_bit);
+        self.cru_regs().softrst_con_npu.set(set_value);
+
+        // 步骤 2: 等待复位生效（至少 10us）
+        self.delay_us(10);
+
+        // 步骤 3: 清零 - 释放复位
+        let clear_value = (1 << (reset_bit + WRITE_MASK_SHIFT)) | (0 << reset_bit);
+        self.cru_regs().softrst_con_npu.set(clear_value);
+
+        // 步骤 4: 等待稳定
+        self.delay_us(5);
+
+        info!("[RKNPU] AXI reset completed");
+        Ok(())
+    }
+
+    /// 执行 AHB 总线复位
+    ///
+    /// AHB 复位会重置 NPU 的 AHB 总线接口
+    fn reset_ahb(&self) -> RkNpuResult<()> {
+        use crate::configs::cru_softrst::*;
+
+        info!("[RKNPU] Performing AHB reset");
+
+        // 只复位 NPU0 核心（当前只使用单核）
+        let reset_bit = NPU0_AHB_SRST;
+
+        // RK 芯片的写保护机制：高 16 位为写使能掩码
+        // 步骤 1: 置位 - 触发复位
+        let set_value = (1 << (reset_bit + WRITE_MASK_SHIFT)) | (1 << reset_bit);
+        self.cru_regs().softrst_con_npu.set(set_value);
+
+        // 步骤 2: 等待复位生效（至少 10us）
+        self.delay_us(10);
+
+        // 步骤 3: 清零 - 释放复位
+        let clear_value = (1 << (reset_bit + WRITE_MASK_SHIFT)) | (0 << reset_bit);
+        self.cru_regs().softrst_con_npu.set(clear_value);
+
+        // 步骤 4: 等待稳定
+        self.delay_us(5);
+
+        info!("[RKNPU] AHB reset completed");
+        Ok(())
+    }
+
+    /// 执行软复位
+    ///
+    /// 软复位会重置 NPU 的状态，包括：
+    /// 1. 清除中断状态
+    /// 2. 禁用所有使能位
+    /// 3. 执行 AXI 总线复位
+    /// 4. 执行 AHB 总线复位
+    ///
+    /// 基于 C 驱动中的 rknpu_soft_reset() 函数实现
+    pub fn soft_reset(&self) -> RkNpuResult<()> {
+        info!("[RKNPU] Starting soft reset");
+
+        // 1. 清除中断状态
+        self.clear_interrupts()?;
+
+        // 2. 禁用所有使能位
+        // self.disable_enables()?;
+
+        // 3. 执行 AXI 复位
+        self.reset_axi()?;
+
+        // 4. 执行 AHB 复位
+        self.reset_ahb()?;
+
+        // 5. 等待复位完成
+        self.delay_us(10);
+
+        // Convert pm_base (usize) to NonNull<u8> expected by RockchipPM::new
+        let base_ptr = NonNull::new(self.pm_base as *mut u8)
+            .ok_or(RkNpuError::InvalidInput)?;
+        let mut pm = RockchipPM::new(base_ptr, rockchip_pm::RkBoard::Rk3588);
+        pm.power_domain_off(NPU1).unwrap();
+        pm.power_domain_off(NPU2).unwrap();
+        pm.power_domain_off(NPU).unwrap();
+        pm.power_domain_off(NPUTOP).unwrap();
+
+        self.delay_us(1000); // 等待 1ms
+
+        pm.power_domain_on(NPUTOP).unwrap();
+        pm.power_domain_on(NPU).unwrap();
+        pm.power_domain_on(NPU1).unwrap();
+        pm.power_domain_on(NPU2).unwrap();
+
+        info!("[RKNPU] Soft reset completed successfully");
+        Ok(())
     }
 }

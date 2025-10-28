@@ -1,4 +1,4 @@
-use log::info;
+use log::{debug, info};
 use memory_addr::{PhysAddr, VirtAddr};
 use rk3588_rs::{
     DrmVersion, RknpuAction, RknpuMemSync,
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub fn rknpu_ioctl(rknpu: &RknpuDev, rknpu_cmd: Option<RkNpuIoctl>, arg: usize, dma_to_kernel: fn(PhysAddr) -> VirtAddr) -> RkNpuResult<()> {
-    info!("rknpu ioctl => cmd: {:?}, arg: {:#x}", rknpu_cmd, arg);
+    debug!("rknpu ioctl => cmd: {:?}, arg: {:#x}", rknpu_cmd, arg);
     match rknpu_cmd {
         Some(RkNpuIoctl::DrmIoctlVersion) => {
             let drm_ver = unsafe { &mut *(arg as *mut DrmVersion) };

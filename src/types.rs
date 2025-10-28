@@ -197,6 +197,8 @@ pub enum RkNpuError {
     InvalidTaskAddress,
     InvalidParameter,
     OutOfMemory,
+    NotInitialized,
+    CoreUnavailable,
 }
 
 pub type RkNpuResult<T> = Result<T, RkNpuError>;
